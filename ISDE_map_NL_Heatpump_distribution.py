@@ -222,6 +222,9 @@ else:
 # ---------------------------
 merged = nl_postcodes.merge(isde_agg, on="Postcode", how="left")
 
+# Calculate area in km² for each postcode
+merged['Oppervlakte_km2'] = merged.geometry.area / 1_000_000  # Convert from m² to km²
+
 # Merge with population data
 if len(population_df) > 0:
     merged = merged.merge(population_df, on="Postcode", how="left")
@@ -235,6 +238,13 @@ if len(population_df) > 0:
     mask = merged['Aantal_inwoners'] > 0
     merged.loc[mask, 'Warmtepompen_per_1000_inwoners'] = (
         merged.loc[mask, 'Aantal warmtepompen'] / merged.loc[mask, 'Aantal_inwoners'] * 1000
+    )
+    
+    # Calculate heat pumps per km²
+    merged['Warmtepompen_per_km2'] = 0.0
+    mask_area = merged['Oppervlakte_km2'] > 0
+    merged.loc[mask_area, 'Warmtepompen_per_km2'] = (
+        merged.loc[mask_area, 'Aantal warmtepompen'] / merged.loc[mask_area, 'Oppervlakte_km2']
     )
     
     print(f"\nMerged data: {len(merged)} postcodes")
@@ -274,9 +284,9 @@ ax.axis("off")
 plt.tight_layout()
 
 # Save matplotlib plot
-matplotlib_png_1 = f"ISDE_Warmtepompen_Matplotlib_{year_range}.png"
-plt.savefig(matplotlib_png_1, dpi=300, bbox_inches='tight', facecolor='white')
-print(f"✓ Saved matplotlib plot to: {matplotlib_png_1}")
+matplotlib_pdf_1 = f"ISDE_Warmtepompen_Matplotlib_{year_range}.pdf"
+plt.savefig(matplotlib_pdf_1, bbox_inches='tight', facecolor='white')
+print(f"✓ Saved matplotlib plot to: {matplotlib_pdf_1}")
 plt.show()
 
 # Plot 2: Heat pumps per capita (if population data is available)
@@ -306,9 +316,9 @@ if 'Warmtepompen_per_1000_inwoners' in merged.columns:
     plt.tight_layout()
     
     # Save matplotlib plot
-    matplotlib_png_2 = f"ISDE_Warmtepompen_PerCapita_Matplotlib_{year_range}.png"
-    plt.savefig(matplotlib_png_2, dpi=300, bbox_inches='tight', facecolor='white')
-    print(f"✓ Saved matplotlib plot to: {matplotlib_png_2}")
+    matplotlib_pdf_2 = f"ISDE_Warmtepompen_PerCapita_Matplotlib_{year_range}.pdf"
+    plt.savefig(matplotlib_pdf_2, bbox_inches='tight', facecolor='white')
+    print(f"✓ Saved matplotlib plot to: {matplotlib_pdf_2}")
     plt.show()
     
     # Print statistics
@@ -395,10 +405,96 @@ if 'Warmtepompen_per_1000_inwoners' in merged.columns:
     interactive_html = f"ISDE_Warmtepompen_PerCapita_Interactive_{year_range}.html"
     m.save(interactive_html)
     print(f"✓ Saved interactive HTML map to: {interactive_html}")
+    
+    # Create third map using Choropleth plugin (different visualization style)
+    print("\nCreating third interactive HTML map using Choropleth plugin...")
+    
+    # Create new folium map
+    m2 = folium.Map(
+        location=[center_lat, center_lon],
+        zoom_start=7,
+        tiles='CartoDB positron',
+        control_scale=True
+    )
+    
+    # Prepare data for choropleth
+    # Choropleth requires GeoJSON and a dataframe with matching keys
+    choropleth_data = merged_with_pop_wgs84[['Postcode', 'Warmtepompen_per_1000_inwoners']].copy()
+    
+    # Create choropleth layer using folium.Choropleth
+    # Get actual max value to ensure all data is covered
+    actual_max = merged_with_pop_wgs84['Warmtepompen_per_1000_inwoners'].max()
+    
+    folium.Choropleth(
+        geo_data=merged_with_pop_wgs84,
+        name='Warmtepompen per 1000 inwoners',
+        data=choropleth_data,
+        columns=['Postcode', 'Warmtepompen_per_1000_inwoners'],
+        key_on='feature.properties.Postcode',
+        fill_color='RdYlGn',  # Red-Yellow-Green color scheme
+        fill_opacity=0.7,
+        line_opacity=0.5,
+        legend_name='Warmtepompen per 1000 inwoners',
+        smooth_factor=0,
+        threshold_scale=[0, 5, 15, 30, 50, actual_max],
+        highlight=True,
+        nan_fill_color='lightgray'
+    ).add_to(m2)
+    
+    # Add tooltips using a separate GeoJson layer (Choropleth doesn't support tooltips directly)
+    folium.GeoJson(
+        merged_with_pop_wgs84,
+        style_function=lambda feature: {
+            'fillColor': 'transparent',
+            'color': 'transparent',
+            'weight': 0,
+            'fillOpacity': 0
+        },
+        tooltip=folium.GeoJsonTooltip(
+            fields=['Postcode', 'Warmtepompen_per_1000_inwoners', 'Aantal warmtepompen', 'Aantal_inwoners', 'PLAATS', 'GEMEENTENAAM'],
+            aliases=['Postcode:', 'Per 1000 inwoners:', 'Totaal warmtepompen:', 'Inwoners:', 'Plaats:', 'Gemeente:'],
+            localize=True,
+            sticky=False,
+            labels=True,
+            style="""
+                background-color: white;
+                border: 2px solid black;
+                border-radius: 3px;
+                box-shadow: 3px;
+            """,
+            max_width=300,
+        )
+    ).add_to(m2)
+    
+    # Add minimap plugin
+    minimap = plugins.MiniMap(toggle_display=True)
+    m2.add_child(minimap)
+    
+    # Add fullscreen button
+    plugins.Fullscreen(
+        position='topright',
+        title='Volledig scherm',
+        title_cancel='Sluit volledig scherm',
+        force_separate_button=True
+    ).add_to(m2)
+    
+    # Add measure control
+    plugins.MeasureControl(position='topleft', primary_length_unit='kilometers').add_to(m2)
+    
+    # Add layer control
+    folium.LayerControl().add_to(m2)
+    
+    # Save the choropleth map
+    interactive_html_choropleth = f"ISDE_Warmtepompen_Choropleth_{year_range}.html"
+    m2.save(interactive_html_choropleth)
+    print(f"✓ Saved choropleth HTML map to: {interactive_html_choropleth}")
 
 print("\n✓ All maps created successfully!")
 print(f"  - {matplotlib_png_1}")
+print(f"  - {matplotlib_pdf_1}")
 if 'Warmtepompen_per_1000_inwoners' in merged.columns:
     print(f"  - {matplotlib_png_2}")
+    print(f"  - {matplotlib_pdf_2}")
     print(f"  - {interactive_html}")
+    print(f"  - {interactive_html_choropleth}")
 
