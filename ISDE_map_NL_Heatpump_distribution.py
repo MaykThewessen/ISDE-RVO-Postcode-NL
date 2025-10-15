@@ -10,6 +10,9 @@ import matplotlib.pyplot as plt
 import requests
 from io import BytesIO
 import os
+import folium
+from folium import plugins
+import branca.colormap as cm
 clear = os.system('cls' if os.name == 'nt' else 'clear')
 
 # ---------------------------
@@ -319,9 +322,83 @@ if 'Warmtepompen_per_1000_inwoners' in merged.columns:
     print(f"Max:    {stats_data.max():.2f}")
     print(f"Std:    {stats_data.std():.2f}")
     print("="*60)
+    
+    # Create interactive HTML map for per capita visualization
+    print("\nCreating interactive HTML map for per capita data...")
+    
+    # Convert to WGS84 (lat/lon) for folium
+    merged_with_pop_wgs84 = merged_with_pop.to_crs(epsg=4326)
+    
+    # Calculate center of the Netherlands
+    bounds = merged_with_pop_wgs84.total_bounds
+    center_lat = (bounds[1] + bounds[3]) / 2
+    center_lon = (bounds[0] + bounds[2]) / 2
+    
+    # Create folium map
+    m = folium.Map(
+        location=[center_lat, center_lon],
+        zoom_start=7,
+        tiles='OpenStreetMap',
+        control_scale=True
+    )
+    
+    # Create colormap (red to green: red=low, yellow=medium, green=high)
+    vmax_interactive = merged_with_pop_wgs84['Warmtepompen_per_1000_inwoners'].quantile(0.95)
+    colormap = cm.LinearColormap(
+        colors=['#d73027', '#fc8d59', '#fee08b', '#d9ef8b', '#91cf60', '#1a9850'],
+        vmin=0,
+        vmax=vmax_interactive,
+        caption='Warmtepompen per 1000 inwoners'
+    )
+    
+    # Add choropleth layer
+    folium.GeoJson(
+        merged_with_pop_wgs84,
+        style_function=lambda feature: {
+            'fillColor': colormap(feature['properties']['Warmtepompen_per_1000_inwoners']) 
+                if feature['properties']['Warmtepompen_per_1000_inwoners'] > 0 else 'lightgray',
+            'color': 'black',
+            'weight': 0.5,
+            'fillOpacity': 0.7
+        },
+        tooltip=folium.GeoJsonTooltip(
+            fields=['Postcode', 'Warmtepompen_per_1000_inwoners', 'Aantal warmtepompen', 'Aantal_inwoners', 'PLAATS', 'GEMEENTENAAM'],
+            aliases=['Postcode:', 'Per 1000 inwoners:', 'Totaal warmtepompen:', 'Inwoners:', 'Plaats:', 'Gemeente:'],
+            localize=True,
+            sticky=False,
+            labels=True,
+            style="""
+                background-color: white;
+                border: 2px solid black;
+                border-radius: 3px;
+                box-shadow: 3px;
+            """,
+            max_width=300,
+        )
+    ).add_to(m)
+    
+    # Add colormap to map
+    colormap.add_to(m)
+    
+    # Add layer control
+    folium.LayerControl().add_to(m)
+    
+    # Add fullscreen button
+    plugins.Fullscreen(
+        position='topright',
+        title='Volledig scherm',
+        title_cancel='Sluit volledig scherm',
+        force_separate_button=True
+    ).add_to(m)
+    
+    # Save interactive map
+    interactive_html = f"ISDE_Warmtepompen_PerCapita_Interactive_{year_range}.html"
+    m.save(interactive_html)
+    print(f"✓ Saved interactive HTML map to: {interactive_html}")
 
 print("\n✓ All maps created successfully!")
 print(f"  - {matplotlib_png_1}")
 if 'Warmtepompen_per_1000_inwoners' in merged.columns:
     print(f"  - {matplotlib_png_2}")
+    print(f"  - {interactive_html}")
 
