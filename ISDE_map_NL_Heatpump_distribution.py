@@ -333,6 +333,50 @@ if 'Warmtepompen_per_1000_inwoners' in merged.columns:
     print(f"Std:    {stats_data.std():.2f}")
     print("="*60)
     
+    # Plot 3: Heat pumps per km²
+    if 'Warmtepompen_per_km2' in merged.columns:
+        fig, ax = plt.subplots(figsize=(12, 15))
+        
+        # Filter out postcodes with no area data for better visualization
+        merged_with_area = merged[merged['Oppervlakte_km2'] > 0].copy()
+        
+        # Calculate percentile for color scale
+        vmax_km2 = merged_with_area['Warmtepompen_per_km2'].quantile(0.95)
+        
+        merged_with_area.plot(
+            column='Warmtepompen_per_km2',
+            cmap='RdYlGn',
+            linewidth=0.1,
+            edgecolor='black',
+            legend=True,
+            legend_kwds={'label': "Warmtepompen per km²", 'shrink': 0.7},
+            ax=ax,
+            vmin=0,
+            vmax=vmax_km2
+        )
+        
+        ax.set_title(f"ISDE Warmtepompen per km² (Nederland, {year_range})", fontsize=16, pad=20)
+        ax.axis("off")
+        plt.tight_layout()
+        
+        # Save matplotlib plot
+        matplotlib_pdf_3 = f"ISDE_Warmtepompen_PerKm2_Matplotlib_{year_range}.pdf"
+        plt.savefig(matplotlib_pdf_3, bbox_inches='tight', facecolor='white')
+        print(f"✓ Saved matplotlib plot to: {matplotlib_pdf_3}")
+        plt.show()
+        
+        # Print statistics
+        print("\n" + "="*60)
+        print("STATISTICS - Heat Pumps per km²")
+        print("="*60)
+        stats_data_km2 = merged_with_area['Warmtepompen_per_km2']
+        print(f"Mean:   {stats_data_km2.mean():.2f}")
+        print(f"Median: {stats_data_km2.median():.2f}")
+        print(f"Min:    {stats_data_km2.min():.2f}")
+        print(f"Max:    {stats_data_km2.max():.2f}")
+        print(f"Std:    {stats_data_km2.std():.2f}")
+        print("="*60)
+    
     # Create interactive HTML map for per capita visualization
     print("\nCreating interactive HTML map for per capita data...")
     
@@ -488,13 +532,84 @@ if 'Warmtepompen_per_1000_inwoners' in merged.columns:
     interactive_html_choropleth = f"ISDE_Warmtepompen_Choropleth_{year_range}.html"
     m2.save(interactive_html_choropleth)
     print(f"✓ Saved choropleth HTML map to: {interactive_html_choropleth}")
+    
+    # Create interactive HTML map for heat pumps per km²
+    if 'Warmtepompen_per_km2' in merged.columns:
+        print("\nCreating interactive HTML map for heat pumps per km²...")
+        
+        # Filter areas with valid data
+        merged_km2_wgs84 = merged[merged['Oppervlakte_km2'] > 0].to_crs(epsg=4326)
+        
+        # Create folium map
+        m3 = folium.Map(
+            location=[center_lat, center_lon],
+            zoom_start=7,
+            tiles='OpenStreetMap',
+            control_scale=True
+        )
+        
+        # Create colormap for km² data
+        vmax_km2_interactive = merged_km2_wgs84['Warmtepompen_per_km2'].quantile(0.95)
+        colormap_km2 = cm.LinearColormap(
+            colors=['#d73027', '#fc8d59', '#fee08b', '#d9ef8b', '#91cf60', '#1a9850'],
+            vmin=0,
+            vmax=vmax_km2_interactive,
+            caption='Warmtepompen per km²'
+        )
+        
+        # Add choropleth layer
+        folium.GeoJson(
+            merged_km2_wgs84,
+            style_function=lambda feature: {
+                'fillColor': colormap_km2(feature['properties']['Warmtepompen_per_km2']) 
+                    if feature['properties']['Warmtepompen_per_km2'] > 0 else 'lightgray',
+                'color': 'black',
+                'weight': 0.5,
+                'fillOpacity': 0.7
+            },
+            tooltip=folium.GeoJsonTooltip(
+                fields=['Postcode', 'Warmtepompen_per_km2', 'Aantal warmtepompen', 'Oppervlakte_km2', 'PLAATS', 'GEMEENTENAAM'],
+                aliases=['Postcode:', 'Per km²:', 'Totaal warmtepompen:', 'Oppervlakte (km²):', 'Plaats:', 'Gemeente:'],
+                localize=True,
+                sticky=False,
+                labels=True,
+                style="""
+                    background-color: white;
+                    border: 2px solid black;
+                    border-radius: 3px;
+                    box-shadow: 3px;
+                """,
+                max_width=300,
+            )
+        ).add_to(m3)
+        
+        # Add colormap to map
+        colormap_km2.add_to(m3)
+        
+        # Add layer control
+        folium.LayerControl().add_to(m3)
+        
+        # Add fullscreen button
+        plugins.Fullscreen(
+            position='topright',
+            title='Volledig scherm',
+            title_cancel='Sluit volledig scherm',
+            force_separate_button=True
+        ).add_to(m3)
+        
+        # Save interactive map
+        interactive_html_km2 = f"ISDE_Warmtepompen_PerKm2_Interactive_{year_range}.html"
+        m3.save(interactive_html_km2)
+        print(f"✓ Saved interactive HTML map to: {interactive_html_km2}")
 
 print("\n✓ All maps created successfully!")
-print(f"  - {matplotlib_png_1}")
 print(f"  - {matplotlib_pdf_1}")
 if 'Warmtepompen_per_1000_inwoners' in merged.columns:
-    print(f"  - {matplotlib_png_2}")
     print(f"  - {matplotlib_pdf_2}")
+if 'Warmtepompen_per_km2' in merged.columns:
+    print(f"  - {matplotlib_pdf_3}")
+    print(f"  - {interactive_html_km2}")
+if 'Warmtepompen_per_1000_inwoners' in merged.columns:
     print(f"  - {interactive_html}")
     print(f"  - {interactive_html_choropleth}")
 
