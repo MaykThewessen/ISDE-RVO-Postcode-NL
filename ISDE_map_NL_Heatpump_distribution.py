@@ -165,7 +165,8 @@ population_cache_file = "nl_postcode4_population.csv"
 
 if os.path.exists(population_cache_file):
     print(f"Loading cached population data from {population_cache_file}...")
-    population_df = pd.read_csv(population_cache_file)
+    population_df = pd.read_csv(population_cache_file, dtype={'Postcode': str})
+    population_df['Postcode'] = population_df['Postcode'].astype(str).str.zfill(4)
     print(f"✓ Successfully loaded population data for {len(population_df)} postcodes from cache")
 else:
     # Try to extract population data from the existing geojson file
@@ -227,7 +228,7 @@ if len(population_df) > 0:
     merged['Aantal_inwoners'] = merged['Aantal_inwoners'].fillna(0)
     
     # Calculate heat pumps per 1000 inhabitants
-    merged['Warmtepompen_per_1000_inwoners'] = 0
+    merged['Warmtepompen_per_1000_inwoners'] = 0.0
     mask = merged['Aantal_inwoners'] > 0
     merged.loc[mask, 'Warmtepompen_per_1000_inwoners'] = (
         merged.loc[mask, 'Aantal warmtepompen'] / merged.loc[mask, 'Aantal_inwoners'] * 1000
@@ -323,3 +324,4 @@ print("\n✓ All maps created successfully!")
 print(f"  - {matplotlib_png_1}")
 if 'Warmtepompen_per_1000_inwoners' in merged.columns:
     print(f"  - {matplotlib_png_2}")
+
