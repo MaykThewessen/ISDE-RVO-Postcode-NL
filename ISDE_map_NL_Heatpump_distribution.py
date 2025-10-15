@@ -240,12 +240,12 @@ if len(population_df) > 0:
         merged.loc[mask, 'Aantal warmtepompen'] / merged.loc[mask, 'Aantal_inwoners'] * 1000
     )
     
-    # Calculate heat pumps per km²
+    # Calculate heat pumps per km² and round to 1 decimal
     merged['Warmtepompen_per_km2'] = 0.0
     mask_area = merged['Oppervlakte_km2'] > 0
     merged.loc[mask_area, 'Warmtepompen_per_km2'] = (
         merged.loc[mask_area, 'Aantal warmtepompen'] / merged.loc[mask_area, 'Oppervlakte_km2']
-    )
+    ).round(1)
     
     print(f"\nMerged data: {len(merged)} postcodes")
     print(f"Postcodes with heat pumps: {(merged['Aantal warmtepompen'] > 0).sum()}")
@@ -262,6 +262,12 @@ else:
 # ---------------------------
 print("\nCreating matplotlib plots...")
 
+# Close all existing figures first
+plt.close('all')
+
+# Footnote text for all plots
+footnote_text = "Bron: RVO.nl van ISDE downloadbestand augustus 2025.xlsx versie 9-Sept-2025\nFiguur gemaakt door Mayk Thewessen, alle rechten behouden, naamsvermelding bij hergebruik"
+
 # Calculate better color scale based on actual data
 color_max = merged['Aantal warmtepompen'].quantile(0.95)
 
@@ -269,7 +275,7 @@ color_max = merged['Aantal warmtepompen'].quantile(0.95)
 fig, ax = plt.subplots(figsize=(12, 15))
 merged.plot(
     column='Aantal warmtepompen',
-    cmap='YlOrRd',
+    cmap='RdYlGn_r',  # Reversed: groen=weinig, rood=veel
     linewidth=0.1,
     edgecolor='black',
     legend=True,
@@ -281,13 +287,17 @@ merged.plot(
 
 ax.set_title(f"ISDE Warmtepompen per Postcodegebied (Nederland, {year_range})", fontsize=16, pad=20)
 ax.axis("off")
-plt.tight_layout()
+
+# Add footnote
+fig.text(0.5, 0.01, footnote_text, ha='center', fontsize=8, style='italic', wrap=True)
+
+plt.tight_layout(rect=[0, 0.03, 1, 1])  # Make room for footnote
 
 # Save matplotlib plot
 matplotlib_pdf_1 = f"ISDE_Warmtepompen_Matplotlib_{year_range}.pdf"
 plt.savefig(matplotlib_pdf_1, bbox_inches='tight', facecolor='white')
 print(f"✓ Saved matplotlib plot to: {matplotlib_pdf_1}")
-plt.show()
+plt.close()
 
 # Plot 2: Heat pumps per capita (if population data is available)
 if 'Warmtepompen_per_1000_inwoners' in merged.columns:
@@ -301,7 +311,7 @@ if 'Warmtepompen_per_1000_inwoners' in merged.columns:
     
     merged_with_pop.plot(
         column='Warmtepompen_per_1000_inwoners',
-        cmap='RdYlGn',
+        cmap='RdYlGn_r',  # Reversed: groen=weinig, rood=veel
         linewidth=0.1,
         edgecolor='black',
         legend=True,
@@ -313,13 +323,17 @@ if 'Warmtepompen_per_1000_inwoners' in merged.columns:
     
     ax.set_title(f"ISDE Warmtepompen per 1000 Inwoners (Nederland, {year_range})", fontsize=16, pad=20)
     ax.axis("off")
-    plt.tight_layout()
+    
+    # Add footnote
+    fig.text(0.5, 0.01, footnote_text, ha='center', fontsize=8, style='italic', wrap=True)
+    
+    plt.tight_layout(rect=[0, 0.03, 1, 1])  # Make room for footnote
     
     # Save matplotlib plot
     matplotlib_pdf_2 = f"ISDE_Warmtepompen_PerCapita_Matplotlib_{year_range}.pdf"
     plt.savefig(matplotlib_pdf_2, bbox_inches='tight', facecolor='white')
     print(f"✓ Saved matplotlib plot to: {matplotlib_pdf_2}")
-    plt.show()
+    plt.close()
     
     # Print statistics
     print("\n" + "="*60)
@@ -340,12 +354,12 @@ if 'Warmtepompen_per_1000_inwoners' in merged.columns:
         # Filter out postcodes with no area data for better visualization
         merged_with_area = merged[merged['Oppervlakte_km2'] > 0].copy()
         
-        # Calculate percentile for color scale
-        vmax_km2 = merged_with_area['Warmtepompen_per_km2'].quantile(0.95)
+        # Set maximum value for color scale
+        vmax_km2 = 50  # Cap at 50 warmtepompen per km²
         
         merged_with_area.plot(
             column='Warmtepompen_per_km2',
-            cmap='RdYlGn',
+            cmap='RdYlGn_r',  # Reversed: groen=laag, rood=hoog
             linewidth=0.1,
             edgecolor='black',
             legend=True,
@@ -357,13 +371,17 @@ if 'Warmtepompen_per_1000_inwoners' in merged.columns:
         
         ax.set_title(f"ISDE Warmtepompen per km² (Nederland, {year_range})", fontsize=16, pad=20)
         ax.axis("off")
-        plt.tight_layout()
+        
+        # Add footnote
+        fig.text(0.5, 0.01, footnote_text, ha='center', fontsize=8, style='italic', wrap=True)
+        
+        plt.tight_layout(rect=[0, 0.03, 1, 1])  # Make room for footnote
         
         # Save matplotlib plot
         matplotlib_pdf_3 = f"ISDE_Warmtepompen_PerKm2_Matplotlib_{year_range}.pdf"
         plt.savefig(matplotlib_pdf_3, bbox_inches='tight', facecolor='white')
         print(f"✓ Saved matplotlib plot to: {matplotlib_pdf_3}")
-        plt.show()
+        plt.close()
         
         # Print statistics
         print("\n" + "="*60)
@@ -383,6 +401,15 @@ if 'Warmtepompen_per_1000_inwoners' in merged.columns:
     # Convert to WGS84 (lat/lon) for folium
     merged_with_pop_wgs84 = merged_with_pop.to_crs(epsg=4326)
     
+    # Simplify geometries to reduce file size (tolerance in degrees, ~200m)
+    # This significantly reduces the number of coordinate points
+    merged_with_pop_wgs84['geometry'] = merged_with_pop_wgs84['geometry'].simplify(tolerance=0.001, preserve_topology=True)
+    #merged_with_pop_wgs84['geometry'] = merged_with_pop_wgs84['geometry']
+    
+    # Round numeric values to reduce file size
+    merged_with_pop_wgs84['Warmtepompen_per_1000_inwoners'] = merged_with_pop_wgs84['Warmtepompen_per_1000_inwoners'].round(1)
+    merged_with_pop_wgs84['Aantal_inwoners'] = merged_with_pop_wgs84['Aantal_inwoners'].round(0).astype(int)
+    
     # Calculate center of the Netherlands
     bounds = merged_with_pop_wgs84.total_bounds
     center_lat = (bounds[1] + bounds[3]) / 2
@@ -396,10 +423,10 @@ if 'Warmtepompen_per_1000_inwoners' in merged.columns:
         control_scale=True
     )
     
-    # Create colormap (red to green: red=low, yellow=medium, green=high)
+    # Create colormap (groen=weinig, rood=veel)
     vmax_interactive = merged_with_pop_wgs84['Warmtepompen_per_1000_inwoners'].quantile(0.95)
     colormap = cm.LinearColormap(
-        colors=['#d73027', '#fc8d59', '#fee08b', '#d9ef8b', '#91cf60', '#1a9850'],
+        colors=['#1a9850', '#91cf60', '#d9ef8b', '#fee08b', '#fc8d59', '#d73027'],
         vmin=0,
         vmax=vmax_interactive,
         caption='Warmtepompen per 1000 inwoners'
@@ -475,7 +502,7 @@ if 'Warmtepompen_per_1000_inwoners' in merged.columns:
         data=choropleth_data,
         columns=['Postcode', 'Warmtepompen_per_1000_inwoners'],
         key_on='feature.properties.Postcode',
-        fill_color='RdYlGn',  # Red-Yellow-Green color scheme
+        fill_color='RdYlGn_r',  # Reversed: groen=weinig, rood=veel
         fill_opacity=0.7,
         line_opacity=0.5,
         legend_name='Warmtepompen per 1000 inwoners',
@@ -540,6 +567,14 @@ if 'Warmtepompen_per_1000_inwoners' in merged.columns:
         # Filter areas with valid data
         merged_km2_wgs84 = merged[merged['Oppervlakte_km2'] > 0].to_crs(epsg=4326)
         
+        # Simplify geometries to reduce file size (tolerance in degrees, ~200m)
+        merged_km2_wgs84['geometry'] = merged_km2_wgs84['geometry'].simplify(tolerance=0.001, preserve_topology=True)
+        #merged_km2_wgs84['geometry'] = merged_km2_wgs84['geometry']
+        
+        # Round numeric values to reduce file size
+        merged_km2_wgs84['Oppervlakte_km2'] = merged_km2_wgs84['Oppervlakte_km2'].round(1)
+        # Warmtepompen_per_km2 is already rounded to 1 decimal
+        
         # Create folium map
         m3 = folium.Map(
             location=[center_lat, center_lon],
@@ -548,10 +583,10 @@ if 'Warmtepompen_per_1000_inwoners' in merged.columns:
             control_scale=True
         )
         
-        # Create colormap for km² data
-        vmax_km2_interactive = merged_km2_wgs84['Warmtepompen_per_km2'].quantile(0.95)
+        # Create colormap for km² data (reversed: groen=laag, rood=hoog)
+        vmax_km2_interactive = 50  # Cap at 50 warmtepompen per km²
         colormap_km2 = cm.LinearColormap(
-            colors=['#d73027', '#fc8d59', '#fee08b', '#d9ef8b', '#91cf60', '#1a9850'],
+            colors=['#1a9850', '#91cf60', '#d9ef8b', '#fee08b', '#fc8d59', '#d73027'],
             vmin=0,
             vmax=vmax_km2_interactive,
             caption='Warmtepompen per km²'
