@@ -58,3 +58,18 @@ venv.bak/
 # Temporary files
 *.tmp
 
+# Large data files (download or generate locally)
+*.xlsx
+*.csv
+*.geojson
+*.html
+*.pdf
+
+# Keep PNG plots for README
+!ISDE_Warmtepompen_Matplotlib_*.png
+!ISDE_Warmtepompen_PerCapita_Matplotlib_*.png
+
+# Other large files
+Heatpump_report_2025.pdf
+ISDE downloadbestand augustus 2025/
+
